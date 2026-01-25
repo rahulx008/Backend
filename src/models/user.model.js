@@ -1,5 +1,5 @@
 import mongoose, {Schema} from "mongoose";
-import bcryptjs from "bcryptjs";
+import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
 const userSchema = new Schema(
@@ -49,15 +49,14 @@ const userSchema = new Schema(
 )
 
 userSchema.pre("save", async function (next){
-    if(!this.isModified("password")) return next();
-    this.password = await bcryptjs.hash(this.password, 10)
-    next()
+    if(!this.isModified("password")) return;
+    this.password = await bcrypt.hash(this.password, 10 );
 })
 
 
 // definition of isPasswordCorrect fn which compares using Bcript compare fn.. 
 userSchema.methods.isPasswordCorrect = async function (password){
-    return await bcryptjs.compare(password, this.password);
+    return await bcrypt.compare(password, this.password);
 }
 
 // definition of generateAccessToken fn which compares using jwt sign fn.. 
@@ -87,4 +86,4 @@ userSchema.methods.generateRefreshToken = function (){
     )
 }
 
-export const User = mongoose.Model("User", userSchema); 
+export const User = mongoose.model("User", userSchema); 
