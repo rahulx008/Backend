@@ -54,14 +54,17 @@ userSchema.pre("save", async function (next){
     next()
 })
 
+
+// definition of isPasswordCorrect fn which compares using Bcript compare fn.. 
 userSchema.methods.isPasswordCorrect = async function (password){
     return await bcryptjs.compare(password, this.password);
 }
 
+// definition of generateAccessToken fn which compares using jwt sign fn.. 
 userSchema.methods.generateAccessToken = function (){
     return jwt.sign(
         {
-            id: this.id,
+            _id: this.id,
             username: this.username,
             email: this.email,
             fullname: this.fullname
@@ -75,7 +78,7 @@ userSchema.methods.generateAccessToken = function (){
 userSchema.methods.generateRefreshToken = function (){
     return jwt.sign(
         {
-            id: this.id,
+            _id: this.id
         },
         process.env.REFRESH_TOKEN_SECRET,
         {
