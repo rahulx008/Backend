@@ -1,5 +1,5 @@
 import { Router } from "express";   
-import { registerUser, loginUser, logoutUser} from "../controllers/user.controller.js";
+import { registerUser, loginUser, logoutUser, refreshAccessToken} from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
@@ -39,6 +39,10 @@ router.route("/logout").post(
     //verifyJWT is a middleware made by us to add req.user in req before performing logoutUser
     verifyJWT,
     logoutUser
+)
+
+router.route("/refresh-access-token").post(
+    refreshAccessToken
 )
 
 export default router;

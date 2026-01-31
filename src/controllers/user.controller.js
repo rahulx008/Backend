@@ -3,6 +3,28 @@ import { User } from "../models/user.model.js";
 import {uploadOnCloudinary} from "../utils/cloudinary.js";
 import  {ApiError}  from "../utils/ApiError.js"; 
 import { ApiResponse } from "../utils/ApiResponse.js";
+import jwt from "jsonwebtoken";
+
+const generateAccessAndRefreshTokens = async (_id)=>{
+    try {
+        const user = await User.findById(_id);
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+
+        user.refreshToken = refreshToken;
+
+        //validateBeforeSave is kept false because we dont want to validate other fields again.
+        // only refresh token field is being updated here.
+        await user.save({validateBeforeSave: false}); 
+        //console.log("Token Generated:", accessToken);
+
+        return {accessToken, refreshToken}   
+    } catch (error) {
+        new ApiError(500, "Something went wrong while generating refresh and access token");
+    }
+
+    
+}
 
 // User Registration Method
 const registerUser=asyncHandler(async(req,res)=>{
@@ -95,27 +117,6 @@ const registerUser=asyncHandler(async(req,res)=>{
     )
 })
 
-const generateAccessAndRefreshTokens = async (_id)=>{
-    try {
-        const user = await User.findById(_id);
-        const accessToken = user.generateAccessToken();
-        const refreshToken = user.generateRefreshToken();
-
-        user.refreshToken = refreshToken;
-
-        //validateBeforeSave is kept false because we dont want to validate other fields again.
-        // only refresh token field is being updated here.
-        await user.save({validateBeforeSave: false}); 
-        //console.log("Token Generated:", accessToken);
-
-        return {accessToken, refreshToken}   
-    } catch (error) {
-        new ApiError(500, "Something went wrong while generating refresh and access token");
-    }
-
-    
-}
-
 // User Login Method 
 const loginUser = asyncHandler(async(req, res)=>{
     /*
@@ -207,4 +208,54 @@ const logoutUser = asyncHandler(async(req, res)=>{
 
 })
 
-export {registerUser, loginUser, logoutUser};
+//refresh access token
+const refreshAccessToken = asyncHandler( async (req, res )=>{
+
+    const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+
+    if(!incomingRefreshToken){
+        throw new ApiError(401, "Unauthorized request");
+    }
+
+    try {
+        const decodedToken = jwt.verify(
+            incomingRefreshToken,
+            process.env.REFRESH_TOKEN_SECRET
+        )
+    
+        const user = await User.findById(decodedToken._id);
+    
+        if(!user){
+            throw new ApiError(401, "Invalid refresh token");
+        }
+    
+        if(incomingRefreshToken !== user.refreshToken){
+            throw new ApiError(401, "Refresh token is expired or used");
+        }
+    
+        const options = {
+            httpOnly: true,
+            secure: true
+        }
+    
+        const {accessToken, newRefreshToken} = await generateAccessAndRefreshTokens(user._id);
+    
+        return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", newRefreshToken, options)
+        .json(
+            new ApiResponse(
+                200,
+                {accessToken, refreshToken: newRefreshToken},
+                "Access token refreshed"
+            )
+        )
+
+    } catch (error) {
+        throw new ApiError(401, error?.message || "Invalid refresh token");
+    }
+    
+})
+
+export {registerUser, loginUser, logoutUser, refreshAccessToken};
