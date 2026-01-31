@@ -1,6 +1,7 @@
 import { Router } from "express";   
-import { registerUser } from "../controllers/user.controller.js";
+import { registerUser, loginUser, logoutUser} from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
+import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 
 const router = Router();
@@ -29,6 +30,16 @@ router.route("/register").post(
     registerUser // it is a callback function 
 
 );
+
+router.route("/login").post(
+    loginUser
+)
+
+router.route("/logout").post(
+    //verifyJWT is a middleware made by us to add req.user in req before performing logoutUser
+    verifyJWT,
+    logoutUser
+)
 
 export default router;
 
