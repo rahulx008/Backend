@@ -1,7 +1,10 @@
 import { Router } from "express";   
-import { registerUser, loginUser, logoutUser, refreshAccessToken} from "../controllers/user.controller.js";
+import { registerUser, loginUser, logoutUser, refreshAccessToken,
+    getCurrentUser, changeUserPassword, changeAccountDetails, updateAvatar, updateCoverImage
+} from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
+
 
 
 const router = Router();
@@ -35,14 +38,42 @@ router.route("/login").post(
     loginUser
 )
 
+// Secured Routes
+
 router.route("/logout").post(
     //verifyJWT is a middleware made by us to add req.user in req before performing logoutUser
     verifyJWT,
     logoutUser
 )
-
 router.route("/refresh-access-token").post(
     refreshAccessToken
+)
+
+router.route("/get-current-user").get(
+    verifyJWT,
+    getCurrentUser
+)
+
+router.route("/update-user-password").post(                
+    verifyJWT,
+    changeUserPassword
+)
+
+router.route("/update-account-details").patch(
+    verifyJWT,
+    changeAccountDetails
+)
+
+router.route("/update-avatar").patch(
+    verifyJWT,
+    upload.single("avatar"), // for single file upload
+    updateAvatar
+)
+
+router.route("/update-cover-image").patch(
+    verifyJWT,
+    upload.single("coverImage"),
+    updateCoverImage
 )
 
 export default router;
