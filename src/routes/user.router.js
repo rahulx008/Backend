@@ -39,7 +39,7 @@ router.route("/login").post(
     loginUser
 )
 
-// Secured Routes
+// -----------------Secured Routes-----------------------
 
 router.route("/logout").post(
     //verifyJWT is a middleware made by us to add req.user in req before performing logoutUser
@@ -80,7 +80,7 @@ router.route("/get-channel-details/:username").post(
     verifyJWT,
     getUserChannelDetails
 )
-router.route("/get-watch-history").post(
+router.route("/get-watch-history").get(
     verifyJWT,
     getUserWatchHistory
 )
