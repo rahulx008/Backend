@@ -22,7 +22,10 @@ import userRouter from './routes/user.router.js'
 // We have defined user related routes in user-router file.
 // the url will be like /api/v1/users/register or /api/v1/users/login
 // middleware to handle user routes 
-app.use("/api/v1/users", userRouter) 
+app.use("/api/v1/users", userRouter)
+
+import subscriptionRouter from './routes/subscription.router.js'
+app.use("/subscriptions", subscriptionRouter)
 
 
 export {app}
