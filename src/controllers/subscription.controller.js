@@ -41,6 +41,30 @@ const subscribeChannel = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, subscription, "Subscribed successfully"));
 })  
 
+const unsubscribeChannel = asyncHandler(async(req,res)=>{
+    const user = req.user;
+    const channelId = req.params.channelId;
+    if(!channelId){
+        throw new ApiError(400, "Channel Id is required");
+    }
+
+    const channel = await User.findOne({username: channelId});
+    if(!channel){
+        throw new ApiError(400, "Channel not found");
+    }
+
+    const subscription = await Subscription.findOneAndDelete({
+        subscriber: user._id,
+        channel: channel._id
+    });
+
+    if(!subscription){
+        throw new ApiError(400, "User is not subscribed to the channel");
+    }
+
+    return res.status(200).json(new ApiResponse(200, subscription, "Unsubscribed successfully"));
+})
+
 export {
-    subscribeChannel
+    subscribeChannel, unsubscribeChannel
 };
