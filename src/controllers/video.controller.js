@@ -1,8 +1,10 @@
+import {uploadOnCloudinary, deleteOnCloudinary} from '../utils/cloudinary.js'
 import asyncHandler from "../utils/asyncHandler.js";
-import {uploadOnCloudinary} from '../utils/cloudinary.js'
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { Video } from "../models/video.model.js";
+import { Comment } from "../models/comment.model.js";
+import { Like } from "../models/like.model.js";
 import { isValidObjectId } from "mongoose";
 
 // Publish video
@@ -147,5 +149,107 @@ const getVideoById = asyncHandler(async (req, res)=>{
     )
 })
 
+// Delete video
+const deleteVideo = asyncHandler(async(req, res)=>{
+    const {videoId} = req.params;
+    if(!videoId){
+        throw new ApiError(400, "Video Id is required");
+    }
+    if(!isValidObjectId(videoId)){
+        throw new ApiError(400, "Invalid Video Id");
+    }
+    const video = await Video.findById(videoId);
+    
+    if(!video.owner.equals(req.user._id)){
+        throw new ApiError(400, "Only owner can delete the video");
+    }
+    const result = await Promise.all(
+        deleteOnCloudinary(video.video_publicId, "video"),
+        deleteOnCloudinary(video.thumbnail_publicId, "image"),
+        Video.findByIdAndDelete(videoId),
+        Comment.deleteMany({video: videoId}),
+        Like.deleteMany({video: videoId})
+    );
 
-export {publishVideo, getVideoById};
+    const {deleteVideoCloudResult, deleteThumbnailCloudResult, deleteVideoResult,
+        deleteCommentResult, deleteLikeResult}=result;
+    
+    if(deleteVideoCloudResult.result!=="ok"){
+        new ApiError(500, "Error while deleting video from cloudinary");
+    }
+    if(deleteThumbnailCloudResult.result!=="ok"){
+        new ApiError(500, "Error while deleting thumbnail from cloudinary");
+    }
+
+    if(!deleteVideoResult){
+        new ApiError(500, "Error while deleting video from database");
+    }
+    if(deleteCommentResult.acknowledged && await Comment.countDocuments({video: videoId})>0){
+        new ApiError(500, "Error while deleting comments");
+    }
+    if(deleteLikeResult.acknowledged && await Like.countDocuments({video: videoId})>0){
+        new ApiError(500, "Error while deleting comments");
+    }
+    return res.status(200).json(
+        new ApiResponse(200, {videoId}, "Video deleted successfully")
+    )
+}) 
+
+// Update video details
+const updateVideo = asyncHandler(async(req, res)=>{
+    const {videoId} = req.params;
+    const {title, description} = req.body;
+    const thumbnailLocalPath = req.file?.path;
+
+    if(!videoId){
+        throw new ApiError(400, "Video Id is required");
+    }
+    if(!isValidObjectId(videoId)){
+        throw new ApiError(400, "Invalid Video Id");
+    }
+    if(!title || !description){
+        throw new ApiError(400, "Title and Description are required");
+    }
+    if(!thumbnailLocalPath){
+        throw new ApiError(400, "Thumbnail is required");
+    }
+    const video = await Video.findById(videoId);
+    if(!video.owner.equals(req.user._id)){
+        throw new ApiError(400, "Only owner can update the video");
+    }
+
+    //upload thumbnail
+    const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+    if(!thumbnail){
+        throw new ApiError(400, "Error while uploading thumbnail");
+    }
+
+    //delete the old thumbnail
+    const deleteThumbnailCloudResult = await deleteOnCloudinary(video.thumbnail_publicId, "image");
+    if(deleteThumbnailCloudResult.result!=="ok"){
+        throw new ApiError(500, "Error while deleting old thumbnail from cloudinary");
+    }
+
+    const updatedVideo = await Video.findByIdAndUpdate(
+        videoId,
+        {
+            $set:{
+                title,
+                description,
+                thumbnail: thumbnail.secure_url,
+                thumbnail_publicId: thumbnail.public_id
+            }
+        },
+        {new: true}
+    )
+
+    if(!updatedVideo){
+        throw new ApiError(400, "Error while updating video");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, updatedVideo, "Video details updated successfully")
+    )
+})
+
+export {publishVideo, getVideoById, deleteVideo, updateVideo};
