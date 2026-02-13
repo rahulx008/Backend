@@ -11,10 +11,10 @@ const likeSchema = new mongoose.Schema({
         ref: "Comment",
         default: null
     },
-    likedBy: {
+    likedBy: [{
         type: Schema.Types.ObjectId,
         ref: "User"
-    }
+    }]
 },
 {timestamps: true})  
 

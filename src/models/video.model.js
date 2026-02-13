@@ -20,7 +20,7 @@ const videoSchema = new Schema({
     },
     isPublished:{
         type: Boolean,
-        required:true
+        default: true
     },
     videoFile:{
         type: String, //cloudinary url

@@ -23,7 +23,7 @@ const commentSchema = new mongoose.Schema({
     },
     isPinned: {
         type:Boolean,
-        default: False
+        default: false
     }
     
 }, {timestamps: true})

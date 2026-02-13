@@ -5,14 +5,14 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { Video } from "../models/video.model.js";
 import { Comment } from "../models/comment.model.js";
 import { Like } from "../models/like.model.js";
-import { isValidObjectId } from "mongoose";
+import mongoose, { isValidObjectId } from "mongoose";
 
 // Publish video
 const publishVideo = asyncHandler(async (req, res)=>{
     const {title, description} = req.body;
     
-    const videoLocalPath = req.files?.video[0]?.path;
-    const thumbnailLocalPath = req.files?.thumbnail[0]?.path;
+    const videoLocalPath = req.files?.video?.[0]?.path;
+    const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path;
 
     if(!title || !description){
         throw new ApiError(400, "Title and Description are required");
@@ -21,16 +21,15 @@ const publishVideo = asyncHandler(async (req, res)=>{
         throw new ApiError(400, "Video and Tumbnail files are required");
     }
 
-    const [videoUpload, thumbnailUpload] = await Promise.all(
-        uploadOnCloudinary(videoLocalPath),
-        uploadOnCloudinary(thumbnailLocalPath)
-    );
+    const videoUpload = await uploadOnCloudinary(videoLocalPath);
+    const thumbnailUpload = await uploadOnCloudinary(thumbnailLocalPath);
+
 
     if(!videoUpload || !thumbnailUpload){
         throw new ApiError(400, "Error while uploading video file");
     }
     
-    const videoDetails = Video.create({
+    const videoDetails = await Video.create({
         title,
         description,
         owner: req.user._id,
@@ -38,7 +37,7 @@ const publishVideo = asyncHandler(async (req, res)=>{
         thumbnail: thumbnailUpload?.secure_url,
         video_publicId: videoUpload?.public_id,
         thumbnail_publicId: thumbnailUpload?.public_id
-    })
+    });
 
     if(!videoDetails){
         throw new ApiError(400, "Error while publishing video");
@@ -63,7 +62,7 @@ const getVideoById = asyncHandler(async (req, res)=>{
 
     const video = await Video.aggregate([
         {   $match: {
-            _id: videoId,
+            _id: new mongoose.Types.ObjectId(videoId),
             isPublished: true
             } 
         },
@@ -71,25 +70,27 @@ const getVideoById = asyncHandler(async (req, res)=>{
                 from: "users",
                 localField: "owner",
                 foreignField: "_id",
-                as: "channel",
-                pipeline: [
-                    {$lookup:{
+                as: "owner",
+                pipeline: ([
+                    {   $lookup:{
                             from: "subscriptions",
                             localField: "_id",
                             foreignField: "channel",
                             as: "subscribers"
-                        },
-                        $addFields:{
+                        }
+                    },
+                    {   $addFields:{
                             subscribersCount: {$size: "$subscribers"},
                             isSubscribed: {
                                 $cond:{ 
-                                    if: {$in: [req.user._id, "$subscribers.subscriber"]},
+                                    if: {$in: [req.user?._id,  "$subscribers.subscriber"]},
                                     then: true,
                                     else: false
                                 }
                             }
-                        },
-                        $project: {
+                        }
+                    },
+                    {    $project: {
                             fullname: 1,
                             username: 1,
                             avatar: 1,
@@ -97,7 +98,7 @@ const getVideoById = asyncHandler(async (req, res)=>{
                             isSubscribed: 1
                         }                    
                     }    
-                ]
+                ])
             }
         },
         {   $lookup:{
@@ -107,21 +108,19 @@ const getVideoById = asyncHandler(async (req, res)=>{
                 as: "likes"    
             },
         },
-        {
-            $addFields:{
+        {   $addFields:{
                 likesCount: {$size: "$likes"},
-                owner:{$first: $owner},
+                owner:{$first: "$owner"},
                 isLiked: {
                     $cond: {
-                        if: {$in: [req.user._id, "$likes.likedBy"]},
+                        if: {$in: [req.user?._id, "$likes.likedBy"]},
                         then: true,
                         else: false
                     }
                 }
             }
         },
-        {
-            $project: {
+        {   $project: {
                 title: 1,
                 description: 1,
                 owner: 1, //<--
@@ -160,34 +159,38 @@ const deleteVideo = asyncHandler(async(req, res)=>{
     }
     const video = await Video.findById(videoId);
     
+    if(!video){
+        throw new ApiError(404, "Video not found");
+    }
+    
     if(!video.owner.equals(req.user._id)){
         throw new ApiError(400, "Only owner can delete the video");
     }
     const result = await Promise.all(
-        deleteOnCloudinary(video.video_publicId, "video"),
+        [deleteOnCloudinary(video.video_publicId, "video"),
         deleteOnCloudinary(video.thumbnail_publicId, "image"),
         Video.findByIdAndDelete(videoId),
         Comment.deleteMany({video: videoId}),
-        Like.deleteMany({video: videoId})
+        Like.deleteMany({video: videoId})]
     );
 
     const {deleteVideoCloudResult, deleteThumbnailCloudResult, deleteVideoResult,
         deleteCommentResult, deleteLikeResult}=result;
     
-    if(deleteVideoCloudResult.result!=="ok"){
+    if(deleteVideoCloudResult?.result!=="ok"){
         new ApiError(500, "Error while deleting video from cloudinary");
     }
-    if(deleteThumbnailCloudResult.result!=="ok"){
+    if(deleteThumbnailCloudResult?.result!=="ok"){
         new ApiError(500, "Error while deleting thumbnail from cloudinary");
     }
 
     if(!deleteVideoResult){
         new ApiError(500, "Error while deleting video from database");
     }
-    if(deleteCommentResult.acknowledged && await Comment.countDocuments({video: videoId})>0){
+    if(deleteCommentResult?.acknowledged && await Comment.countDocuments({video: videoId})>0){
         new ApiError(500, "Error while deleting comments");
     }
-    if(deleteLikeResult.acknowledged && await Like.countDocuments({video: videoId})>0){
+    if(deleteLikeResult?.acknowledged && await Like.countDocuments({video: videoId})>0){
         new ApiError(500, "Error while deleting comments");
     }
     return res.status(200).json(
@@ -214,6 +217,9 @@ const updateVideo = asyncHandler(async(req, res)=>{
         throw new ApiError(400, "Thumbnail is required");
     }
     const video = await Video.findById(videoId);
+    if(!video){
+        throw new ApiError(404, "Video not found");
+    }
     if(!video.owner.equals(req.user._id)){
         throw new ApiError(400, "Only owner can update the video");
     }
