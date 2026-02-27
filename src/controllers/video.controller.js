@@ -6,19 +6,24 @@ import { Video } from "../models/video.model.js";
 import { Comment } from "../models/comment.model.js";
 import { Like } from "../models/like.model.js";
 import mongoose, { isValidObjectId } from "mongoose";
+import { categories } from '../constants.js';
 
 // Publish video
 const publishVideo = asyncHandler(async (req, res)=>{
-    const {title, description} = req.body;
+    const {title, description, category} = req.body;
     
     const videoLocalPath = req.files?.video?.[0]?.path;
     const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path;
 
-    if(!title || !description){
-        throw new ApiError(400, "Title and Description are required");
+    if(!title.trim() || !description.trim() ||!category){
+        throw new ApiError(400, "Title, Description and Category all fields are required");
     }
     if(!videoLocalPath || !thumbnailLocalPath){
         throw new ApiError(400, "Video and Tumbnail files are required");
+    }
+
+    if(!categories.includes(category)){
+        throw new ApiError(400, "Invalid category");
     }
 
     const videoUpload = await uploadOnCloudinary(videoLocalPath);
@@ -33,6 +38,7 @@ const publishVideo = asyncHandler(async (req, res)=>{
         title,
         description,
         owner: req.user._id,
+        category,
         videoFile: videoUpload?.secure_url,
         thumbnail: thumbnailUpload?.secure_url,
         video_publicId: videoUpload?.public_id,
@@ -123,6 +129,7 @@ const getVideoById = asyncHandler(async (req, res)=>{
         {   $project: {
                 title: 1,
                 description: 1,
+                category: 1,
                 owner: 1, //<--
                 views: 1,
                 videoFile: 1,
@@ -141,6 +148,18 @@ const getVideoById = asyncHandler(async (req, res)=>{
 
   // Increment the view count for the video
     await Video.findByIdAndUpdate(videoId, { $inc: { views: 1 } });
+    
+    //add the video to the user's watch history
+    
+    const watch = await User.findByIdAndUpdate(req.user._id, {
+        $addToSet: {
+            watchHistory: videoId
+        }
+    }, {new: true});
+
+    if(!watch){
+        throw new ApiError(500, "Error while updating watch history");
+    }
     
 
     return res.status(200).json(
@@ -201,7 +220,7 @@ const deleteVideo = asyncHandler(async(req, res)=>{
 // Update video details
 const updateVideo = asyncHandler(async(req, res)=>{
     const {videoId} = req.params;
-    const {title, description} = req.body;
+    const {title, description, category} = req.body;
     const thumbnailLocalPath = req.file?.path;
 
     if(!videoId){
@@ -210,9 +229,13 @@ const updateVideo = asyncHandler(async(req, res)=>{
     if(!isValidObjectId(videoId)){
         throw new ApiError(400, "Invalid Video Id");
     }
-    if(!title || !description){
-        throw new ApiError(400, "Title and Description are required");
+    if(!title.trim() || !description.trim() || !category.trim()){
+        throw new ApiError(400, "Title, Description and Category all fields are required");
     }
+    if(!categories.includes(category)){
+        throw new ApiError(400, "Invalid category");
+    }
+
     if(!thumbnailLocalPath){
         throw new ApiError(400, "Thumbnail is required");
     }
@@ -242,6 +265,7 @@ const updateVideo = asyncHandler(async(req, res)=>{
             $set:{
                 title,
                 description,
+                category,
                 thumbnail: thumbnail.secure_url,
                 thumbnail_publicId: thumbnail.public_id
             }
@@ -258,4 +282,179 @@ const updateVideo = asyncHandler(async(req, res)=>{
     )
 })
 
-export {publishVideo, getVideoById, deleteVideo, updateVideo};
+// get all videos
+const getAllVideos = asyncHandler(async(req, res)=>{
+    const {query, page = 1, limit = 10, sortBy = "createdAt", sortType = "desc", category, userId} = req.query;
+    
+    let searchResults =null;
+    if(query){
+        const searchPipeline = [
+            {   $search: {
+                    index: "search-index",
+                    text: {
+                        query: query,
+                        path: ["title", "description"]
+                    }
+                }
+            },
+            { $project: { _id: 1 } },
+        ];
+
+        searchResults = await Video.aggregate(searchPipeline);
+    }
+    const pipeline =[];
+
+    // if user id given in req
+    if(userId){
+        if(!isValidObjectId(userId)){
+            throw new ApiError(400, "Invalid User Id");
+        }
+        pipeline.push(
+            {$match: {
+                owner: new mongoose.Types.ObjectId(userId)
+            }}
+        );
+    }
+    
+    // Filter by `$search` results if applicable
+    if (searchResults) {
+        const searchIds = searchResults.map((result) => result._id);
+        pipeline.push(
+            {$match: {
+                _id: { $in: searchIds },
+            }}
+        );
+    }
+    if (category) {
+        if (!categories.includes(category)) {
+            throw new ApiError(400, 'Invalid category.')
+
+        }else if(category !== 'trending') {
+            pipeline.push({
+                $match: {
+                category: category
+                }
+            })
+        }
+    }
+
+    // Filter published videos
+    pipeline.push({
+        $match: {
+        isPublished: true,
+        },
+    });
+
+    // Join with the users collection
+    pipeline.push(
+        {
+        $lookup: {
+            from: "users",
+            localField: "owner",
+            foreignField: "_id",
+            as: "owner",
+        },
+        },
+        {
+        $addFields: {
+            owner: {
+            $first: "$owner",
+            },
+        },
+        }
+    );
+
+    // Project fields
+    pipeline.push({
+        $project: {
+            thumbnail: 1,
+            title: 1,
+            description: 1,
+            duration: 1,
+            views: 1,
+            owner: {
+                _id: 1,
+                avatar: 1,
+                fullName: 1,
+                username: 1,
+                createdAt: 1,
+            },
+            createdAt: 1,
+            category: 1
+        },}
+    );
+
+    // Step 3: Use `aggregatePaginate` for pagination
+    const videoAggregate = Video.aggregate(pipeline);
+
+    const filteredVideos = await Video.aggregatePaginate(videoAggregate, {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        sort: (category === 'trending') ? { views: -1 } : { createdAt: -1 },
+    });
+
+
+    // Step 5: Respond with paginated videos
+    return res.status(200).json(
+        new ApiResponse(200, filteredVideos, "Videos fetched successfully")
+    );
+})
+
+// get relatedVideos 
+const getRelatedVideos = asyncHandler(async(req, res)=>{
+    const {videoId} = req.params;
+    if(!videoId){
+        throw new ApiError(400, "Video Id is required");
+    }
+    if(!isValidObjectId(videoId)){
+        throw new ApiError(400, "Invalid Video Id");
+    }
+
+    const video = await Video.findById(videoId);
+    if(!video){
+        throw new ApiError(404, "Video not found");
+    }
+
+    const relatedVideos = await Video.aggregate([
+        {$match: {
+            category: video.category,
+            _id: {$ne: video._id},
+            isPublished: true
+        }},
+        {$sample: {size: 10}},
+        {$lookup: {
+            from: "users",
+            localField: "owner",
+            foreignField: "_id",
+            as: "owner",
+            pipeline: [
+                {$project: {
+                    fullname: 1,
+                    username: 1,
+                    avatar: 1
+                }}
+            ]
+        }},
+        {$addFields: {
+            owner: {$first: "$owner"}
+        }},
+        {$project: {
+            title: 1,
+            description: 1,
+            thumbnail: 1,
+            views: 1,
+            owner: 1,
+            createdAt: 1
+        }}
+    ])
+
+    if(relatedVideos.length === 0){
+        throw new ApiError(404, "No related videos found");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, relatedVideos, "Related videos fetched successfully")
+    )
+})
+
+export {publishVideo, getVideoById, deleteVideo, updateVideo, getAllVideos, getRelatedVideos};

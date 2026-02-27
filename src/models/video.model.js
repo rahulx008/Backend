@@ -1,5 +1,6 @@
 import mongoose, {Schema} from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
+import { categories } from "../constants.js";
 
 const videoSchema = new Schema({
     title:{
@@ -17,6 +18,10 @@ const videoSchema = new Schema({
     views:{
         type: Number,
         default:0
+    },
+    category:{
+        type: String,
+        enum: categories
     },
     isPublished:{
         type: Boolean,

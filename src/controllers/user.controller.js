@@ -438,6 +438,7 @@ const getUserChannelDetails = asyncHandler(async(req, res)=>{
     return res.status(200).json(new ApiResponse(200, channel[0], "Channel details fetched successfully"));
 });
 
+// get watch history
 const getUserWatchHistory = asyncHandler(async(req, res)=>{
     const userWatchHistory = await User.aggregate([
         {$match: {
@@ -486,8 +487,34 @@ const getUserWatchHistory = asyncHandler(async(req, res)=>{
     .json(new ApiResponse(200, userWatchHistory[0].watchHistory, "Watch history fetched successfully"));
 });
 
+//clear watch history
+const clearWatchHistory = asyncHandler(async(req, res)=>{
+    const userId = req.user._id;
+    
+    if(!userId){
+        throw new ApiError(400, "User id is required");
+    }
+    const user = await User.findByIdAndUpdate(
+        userId,
+        {
+            $unset: {
+                watchHistory: 1
+            }
+        },
+        {new: true}
+    );
+
+    if(!user){
+        throw new ApiError(400, "Error while deleting watch history");
+    }
+
+    return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Watch history deleted successfully"));
+});
+
 
 export {registerUser, loginUser, logoutUser, refreshAccessToken, getCurrentUser,
     changeUserPassword, changeAccountDetails, updateAvatar, updateCoverImage,
-    getUserChannelDetails, getUserWatchHistory
+    getUserChannelDetails, getUserWatchHistory, clearWatchHistory
 };
