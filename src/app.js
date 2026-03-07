@@ -28,6 +28,9 @@ import subscriptionRouter from './routes/subscription.router.js'
 app.use("/subscriptions", subscriptionRouter)
 
 import videoRouter from './routes/video.router.js'
-app.use("/videos", videoRouter)
+app.use("/videos", videoRouter);
+
+import commentRouter from './routes/comment.route.js'
+app.use("/comments", commentRouter);
 
 export {app}

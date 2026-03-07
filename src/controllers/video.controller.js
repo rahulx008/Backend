@@ -5,6 +5,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { Video } from "../models/video.model.js";
 import { Comment } from "../models/comment.model.js";
 import { Like } from "../models/like.model.js";
+import {User} from "../models/user.model.js";
 import mongoose, { isValidObjectId } from "mongoose";
 import { categories } from '../constants.js';
 
@@ -284,7 +285,9 @@ const updateVideo = asyncHandler(async(req, res)=>{
 
 // get all videos
 const getAllVideos = asyncHandler(async(req, res)=>{
-    const {query, page = 1, limit = 10, sortBy = "createdAt", sortType = "desc", category, userId} = req.query;
+    const {query, category="trending", userId, cursor, limit} = req.query;
+    
+    let limitNum = limit ? parseInt(limit) : 10;
     
     let searchResults =null;
     if(query){
@@ -304,7 +307,7 @@ const getAllVideos = asyncHandler(async(req, res)=>{
     }
     const pipeline =[];
 
-    // if user id given in req
+    // Filter if user id given in req
     if(userId){
         if(!isValidObjectId(userId)){
             throw new ApiError(400, "Invalid User Id");
@@ -315,7 +318,6 @@ const getAllVideos = asyncHandler(async(req, res)=>{
             }}
         );
     }
-    
     // Filter by `$search` results if applicable
     if (searchResults) {
         const searchIds = searchResults.map((result) => result._id);
@@ -325,6 +327,7 @@ const getAllVideos = asyncHandler(async(req, res)=>{
             }}
         );
     }
+    // Filter by category if provided
     if (category) {
         if (!categories.includes(category)) {
             throw new ApiError(400, 'Invalid category.')
@@ -337,7 +340,6 @@ const getAllVideos = asyncHandler(async(req, res)=>{
             })
         }
     }
-
     // Filter published videos
     pipeline.push({
         $match: {
@@ -364,9 +366,10 @@ const getAllVideos = asyncHandler(async(req, res)=>{
         }
     );
 
-    // Project fields
+    // Project fields to return
     pipeline.push({
         $project: {
+            _id: 1,
             thumbnail: 1,
             title: 1,
             description: 1,
@@ -384,25 +387,58 @@ const getAllVideos = asyncHandler(async(req, res)=>{
         },}
     );
 
+    //Cursor based pagination
+        // Step A: check if cursor is provided and add a match stage to the pipeline
+        if(cursor){
+            if(!isValidObjectId(cursor)){
+                throw new ApiError(400, "Invalid cursor");
+            }
+            pipeline.push({
+                $match: {
+                    _id: { $lt: new mongoose.Types.ObjectId(cursor) }
+                }
+            })
+        }
+        // Step B: Add a sort stage to the pipeline
+        const sortStage = category === 'trending' ? { views: -1, _id: -1 } : { createdAt: -1, _id: -1 };
+        pipeline.push({
+            $sort: sortStage
+        });
+        // Step C: Add a limit stage to the pipeline (fetch one extra record to check if there's a next page)
+        pipeline.push({
+            $limit: limitNum + 1
+        });
+
     // Step 3: Use `aggregatePaginate` for pagination
-    const videoAggregate = Video.aggregate(pipeline);
+    const videos = await Video.aggregate(pipeline);
 
-    const filteredVideos = await Video.aggregatePaginate(videoAggregate, {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        sort: (category === 'trending') ? { views: -1 } : { createdAt: -1 },
-    });
+    let nextCursor = null;
+    let hasMore = false;
+
+    if (videos.length > limitNum) {
+    hasMore = true;
+    nextCursor = videos[limitNum]._id.toString();
+    videos.pop();
+}
+
+    /* This was an example of offset based pagination with AggregatePaginate */
+
+    // const filteredVideos = await Video.aggregatePaginate(videos, {
+    //     page: parseInt(page),
+    //     limit: parseInt(limit),
+    //     sort: (category === 'trending') ? { views: -1 } : { createdAt: -1 },
+    // });
 
 
-    // Step 5: Respond with paginated videos
+    // Step 4 : Respond with paginated videos
     return res.status(200).json(
-        new ApiResponse(200, filteredVideos, "Videos fetched successfully")
+        new ApiResponse(200, { videos, hasMore, nextCursor }, "Videos fetched successfully")
     );
 })
 
 // get relatedVideos 
 const getRelatedVideos = asyncHandler(async(req, res)=>{
-    const {videoId} = req.params;
+    const {videoId} = req.query;
     if(!videoId){
         throw new ApiError(400, "Video Id is required");
     }
