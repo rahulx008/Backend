@@ -30,7 +30,10 @@ app.use("/subscriptions", subscriptionRouter)
 import videoRouter from './routes/video.router.js'
 app.use("/videos", videoRouter);
 
-import commentRouter from './routes/comment.route.js'
+import commentRouter from './routes/comment.router.js'
 app.use("/comments", commentRouter);
+
+import likeRouter from './routes/like.router.js'
+app.use("/likes", likeRouter);
 
 export {app}

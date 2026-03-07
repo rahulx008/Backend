@@ -120,7 +120,7 @@ const getVideoById = asyncHandler(async (req, res)=>{
                 owner:{$first: "$owner"},
                 isLiked: {
                     $cond: {
-                        if: {$in: [req.user?._id, "$likes.likedBy"]},
+                        if: {$in: [req.user?._id, {$ifNull: [{$arrayElemAt: ["$likes.likedBy", 0]}, []]} ]},
                         then: true,
                         else: false
                     }

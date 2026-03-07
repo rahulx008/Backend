@@ -18,12 +18,12 @@ router.route("/delete/:commentId").delete(
     deleteComment
 );
 
-router.route("/togglePin/:commentId").patch(
+router.route("/togglePin").patch(
     verifyJWT, 
     togglePinComment
 );
 
-router.route("/getComments").get(
+router.route("/getComments/:videoId").get(
     verifyJWT, 
     getComments
 );

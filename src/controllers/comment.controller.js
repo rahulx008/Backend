@@ -1,9 +1,11 @@
-import Comment from '../models/comment.model.js';
-import Video from '../models/video.model.js';
-import ApiError from '../utils/ApiError.js';
-import ApiResponse from '../utils/ApiResponse.js';
+import {Comment} from '../models/comment.model.js';
+import {Video} from '../models/video.model.js';
+import {Like} from '../models/like.model.js';
+import {ApiError} from '../utils/ApiError.js';
+import {ApiResponse} from '../utils/ApiResponse.js';
 import { isValidObjectId } from 'mongoose';
 import asyncHandler from '../utils/asyncHandler.js';
+import mongoose from 'mongoose';
 
 const createComment = asyncHandler(async (req, res) => {
     const {videoId, commentId, content} = req.body;
@@ -16,7 +18,7 @@ const createComment = asyncHandler(async (req, res) => {
     if(!isValidObjectId(videoId)) {
         throw new ApiError(400, 'Invalid video ID');
     }
-    if(!isValidObjectId(commentId)){
+    if(commentId && !isValidObjectId(commentId)){
         throw new ApiError(400, 'Invalid comment ID');
     }
     if(!content || content.trim() === '') {
@@ -36,9 +38,10 @@ const createComment = asyncHandler(async (req, res) => {
 
     return res.status(201).json(new ApiResponse(201, comment, "Comment/Reply created successfully"));
 })
+
 // session example for delete comment and its replies and likes in a transaction to maintain data integrity
 const deleteComment = asyncHandler(async (req, res) => {
-    const {commentId, videoId} = req.body;
+    const {commentId} = req.params;
     const userId = req.user?._id;
     if(!isValidObjectId(commentId)) {
         throw new ApiError(400, 'Invalid comment ID');
@@ -48,7 +51,7 @@ const deleteComment = asyncHandler(async (req, res) => {
     if(!comment) {
         throw new ApiError(404, 'Comment not found');
     }
-    if(comment.owner._id!== userId && comment.video.owner._id !== userId) {
+    if(!comment.owner._id.equals(userId) && !comment.video.owner._id.equals(userId)) {
         throw new ApiError(403, 'You are not authorized to delete this comment');
     }
 
@@ -138,8 +141,8 @@ const updateComment = asyncHandler(async (req, res) => {
     if(!comment) {
         throw new ApiError(404, 'Comment not found');
     }
-
-    if(comment.owner._id !== userId) {
+    console.log(comment.owner._id, userId);
+    if(!comment.owner._id.equals(userId)) {
         throw new ApiError(403, 'You are not authorized to update this comment');
     }
 
@@ -153,7 +156,7 @@ const updateComment = asyncHandler(async (req, res) => {
 })
 
 const togglePinComment = asyncHandler(async (req, res) => {
-    const {commentId, videoId} = req.params;
+    const {commentId, videoId} = req.query;
     const userId = req.user?._id;
 
     if(!isValidObjectId(commentId)) {
@@ -167,14 +170,14 @@ const togglePinComment = asyncHandler(async (req, res) => {
     if(!video) {
         throw new ApiError(404, 'Video not found');
     }
-    if(video.owner._id !== userId) {
+    if(!video.owner._id.equals(userId)) {
         throw new ApiError(403, 'Only the video owner can pin comments');
     }
 
     const pin = await Comment.findOneAndUpdate(
         {_id: commentId, video: videoId},
-        { $bit: { isPinned: { xor: 1 } } }, // Toggle the isPinned field using bitwise XOR
-        { new: true }
+        [{ $set: { isPinned: { $not: "$isPinned" } } }],
+        { new: true, updatePipeline: true }
     );
 
     if(!pin) {
@@ -190,7 +193,9 @@ const getComments = asyncHandler(async (req, res) => {
     const {videoId} = req.params;
     const {page = 1, limit = 10} = req.query;
 
-    if(!isValidObjectId(videoId)) {
+    
+
+    if(!videoId || !isValidObjectId(videoId)) {
         throw new ApiError(400, 'Invalid video ID');
     }
 
@@ -244,24 +249,22 @@ const getComments = asyncHandler(async (req, res) => {
             replies: 0,
             __v: 0
 
-        }}
+        }},
+        { $sort: { isPinned: -1, createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit }
     ])
 
-    const commentLimited = Comment.aggregatePaginate(
-        {comments}, 
-        { 
-            page,
-            limit, 
-            sort: {isPinned: -1, createdAt: -1 } 
-        }
-    );
+    const totalComments = await Comment.countDocuments({ video: new mongoose.Types.ObjectId(videoId), parentId: null });
 
-    const totalComments = await Comment.countDocuments({ video: videoId, parentId: null });
+    const totalPages = Math.ceil(totalComments / limit);
 
     return res.status(200).json(
         new ApiResponse(200, 
-            {   comments: commentLimited,
-                totalComments: totalComments
+            {   comments: comments,
+                totalComments: totalComments,
+                totalPages: totalPages,
+                currentPage: page
             },      
             "Comments fetched successfully"
         )
@@ -316,20 +319,23 @@ const getReplies = asyncHandler(async (req, res) => {
             isLiked: 1,
             createdAt: 1,
             updatedAt: 1
-        }}
+        }},
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit }
     ])
-    const repliesLimited = Comment.aggregatePaginate(
-        {replies}, 
-        {
-            page,
-            limit, 
-            sort: { createdAt: -1 } 
-        }
-    );
+
+    const totalReplies = await Comment.countDocuments({ parentId: new mongoose.Types.ObjectId(commentId) });
+
+    const totalPages = Math.ceil(totalReplies / limit);
 
     return res.status(200).json(
         new ApiResponse(200, 
-            { replies: repliesLimited },      
+            {   replies: replies,
+                totalReplies: totalReplies,
+                totalPages: totalPages,
+                currentPage: page
+            },      
             "Replies fetched successfully"
         )
     );
