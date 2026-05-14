@@ -4,7 +4,7 @@ import cors from 'cors';
 
 const app=express();
 
-// use keyword is user to add middlewares and configurations.
+// use keyword is used to add middlewares and configurations.
 app.use(cors({
     origin:process.env.CORS_ORIGIN,
     credentials:true
@@ -25,15 +25,21 @@ import userRouter from './routes/user.router.js'
 app.use("/api/v1/users", userRouter)
 
 import subscriptionRouter from './routes/subscription.router.js'
-app.use("/subscriptions", subscriptionRouter)
+app.use("/api/v1/subscriptions", subscriptionRouter)
 
 import videoRouter from './routes/video.router.js'
-app.use("/videos", videoRouter);
+app.use("/api/v1/videos", videoRouter);
 
 import commentRouter from './routes/comment.router.js'
-app.use("/comments", commentRouter);
+app.use("/api/v1/comments", commentRouter);
 
 import likeRouter from './routes/like.router.js'
-app.use("/likes", likeRouter);
+app.use("/api/v1/likes", likeRouter);
+
+app.use("/api/v1/server", ( req, res ) => {
+    res.send("Server is Up")
+    return;
+}
+)
 
 export {app}
