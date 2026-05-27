@@ -13,14 +13,11 @@ export const verifyJWT = asyncHandler(async (req, res, next)=>{
 // could be written as => export const verifyJWT = asyncHandler(async (req, _, next)=>{
 
     try {
-        // we are having cookies in req because we used cookie-parser middleware
-        // we are also sending cookies from client side
-        // access token is sent in cookie named accessToken
-        //if the token is coming from the header of api request which starts with " Bearer <token>"
-        const token  = req?.cookies?.accessToken || req.headers["Authorization"]?.replace("Bearer ", "");
-        
-        if(!token){
-            
+        // read token from cookies first, then Authorization header (case-insensitive)
+        const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+        const token = req?.cookies?.accessToken || authHeader?.replace(/^Bearer\s+/i, '');
+
+        if (!token) {
             throw new ApiError(401, "Unauthorized Access - No token");
         }
     

@@ -6,6 +6,13 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
+// cookie options helper: use secure+SameSite=None in production, relaxed for local development
+const cookieOptions = {
+    httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: process.env.NODE_ENV === 'production'
+};
+
 const generateAccessAndRefreshTokens = async (_id)=>{
     try {
         const user = await User.findById(_id);
@@ -162,16 +169,10 @@ const loginUser = asyncHandler(async(req, res)=>{
 
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
 
-    const options = {
-        httpOnly: true,
-        sameSite: "none", 
-        secure: false // set to true in production
-    }
-
     return res
     .status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
+    .cookie("accessToken", accessToken, cookieOptions)
+    .cookie("refreshToken", refreshToken, cookieOptions)
     .json(
         new ApiResponse(
             200,
@@ -198,14 +199,9 @@ const logoutUser = asyncHandler(async(req, res)=>{
             new: true
         })     
 
-        const options = {
-            httpOnly: true,
-            secure: true
-        }
-
         return res.status(200)
-        .clearCookie("accessToken", options)
-        .clearCookie("refreshToken", options)
+        .clearCookie("accessToken", cookieOptions)
+        .clearCookie("refreshToken", cookieOptions)
         .json(new ApiResponse(200, {}, "User logged out"))
 
 })
@@ -235,17 +231,13 @@ const refreshAccessToken = asyncHandler( async (req, res )=>{
             throw new ApiError(401, "Refresh token is expired or used");
         }
     
-        const options = {
-            httpOnly: true,
-            secure: true
-        }
     
-        const {accessToken, newRefreshToken} = await generateAccessAndRefreshTokens(user._id);
-    
-        return res
-        .status(200)
-        .cookie("accessToken", accessToken, options)
-        .cookie("refreshToken", newRefreshToken, options)
+            const {accessToken, newRefreshToken} = await generateAccessAndRefreshTokens(user._id);
+
+            return res
+            .status(200)
+            .cookie("accessToken", accessToken, cookieOptions)
+            .cookie("refreshToken", newRefreshToken, cookieOptions)
         .json(
             new ApiResponse(
                 200,
