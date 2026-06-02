@@ -1,13 +1,13 @@
-import {uploadOnCloudinary, deleteOnCloudinary} from '../utils/cloudinary.js'
-import asyncHandler from "../utils/asyncHandler.js";
-import { ApiError } from "../utils/ApiError.js";
-import { ApiResponse } from "../utils/ApiResponse.js";
-import { Video } from "../models/video.model.js";
-import { Comment } from "../models/comment.model.js";
-import { Like } from "../models/like.model.js";
-import {User} from "../models/user.model.js";
 import mongoose, { isValidObjectId } from "mongoose";
 import { categories } from '../constants.js';
+import { Comment } from "../models/comment.model.js";
+import { Like } from "../models/like.model.js";
+import { User } from "../models/user.model.js";
+import { Video } from "../models/video.model.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import { deleteOnCloudinary, uploadOnCloudinary } from '../utils/cloudinary.js';
 
 // Publish video
 const publishVideo = asyncHandler(async (req, res)=>{
@@ -493,4 +493,7 @@ const getRelatedVideos = asyncHandler(async(req, res)=>{
     )
 })
 
-export {publishVideo, getVideoById, deleteVideo, updateVideo, getAllVideos, getRelatedVideos};
+//sea
+
+export { deleteVideo, getAllVideos, getRelatedVideos, getVideoById, publishVideo, updateVideo };
+
