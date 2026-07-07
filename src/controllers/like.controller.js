@@ -9,8 +9,6 @@ const toggleLikeOnVideo = asyncHandler(async (req, res) => {
     const {videoId} = req.body;
     const userId = req.user?._id;
     
-    //console.log(videoId);
-
     if (!videoId ) {
         throw new ApiError(400, 'Video ID is required');
     }
@@ -19,33 +17,31 @@ const toggleLikeOnVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, 'Invalid Video ID');
     }
 
-    const existingLike = await Like.findOneAndDelete({
-        likedBy: userId,
-        video: videoId
-    })
+    const likeDoc = await Like.findOne({ video: videoId });
 
-    if (existingLike) {
-        return res.status(200).json(
-            new ApiResponse(
-                200,
-                existingLike,
-                { message: 'Like removed from video' }
-            )
+    if (!likeDoc) {
+        // No like document, create new
+        const newLike = await Like.create({
+            video: videoId,
+            likedBy: [userId]
+        });
+        return res.status(201).json(
+            new ApiResponse(201, newLike, { message: 'Like added to video' })
         );
     }
 
-    const newLike = await Like.create({
-        likedBy: userId,
-        video: videoId
-    });
-
-    if(!newLike) {
-        throw new ApiError(500, 'Failed to add like to video');
-    }
-
-    if(newLike) {
+    // Like document exists
+    if (likeDoc.likedBy.includes(userId)) {
+        // User has liked, remove like
+        await Like.updateOne({ video: videoId }, { $pull: { likedBy: userId } });
+        return res.status(200).json(
+            new ApiResponse(200, null, { message: 'Like removed from video' })
+        );
+    } else {
+        // User hasn't liked, add like
+        await Like.updateOne({ video: videoId }, { $addToSet: { likedBy: userId } });
         return res.status(201).json(
-            new ApiResponse(201, newLike, { message: 'Like added to video' })
+            new ApiResponse(201, null, { message: 'Like added to video' })
         );
     }
 })
@@ -92,4 +88,27 @@ const toggleLikeOnComment = asyncHandler(async (req, res) => {
     }
 })
 
-export { toggleLikeOnVideo, toggleLikeOnComment }
+const getLikedVideos = asyncHandler(async (req, res) => {
+    const userId = req.user?._id;
+
+    const likedDocs = await Like.find({
+        likedBy: userId,
+        video: { $ne: null }
+    }).populate({
+        path: "video",
+        populate: {
+            path: "owner",
+            select: "fullName username avatar"
+        }
+    });
+
+    const videos = likedDocs
+        .map(doc => doc.video)
+        .filter(video => video !== null && video !== undefined);
+
+    return res.status(200).json(
+        new ApiResponse(200, videos, "Liked videos fetched successfully")
+    );
+})
+
+export { toggleLikeOnVideo, toggleLikeOnComment, getLikedVideos }

@@ -123,7 +123,7 @@ const getVideoById = asyncHandler(async (req, res) => {
         },
         {
             $addFields: {
-                likesCount: { $size: "$likes" },
+                likesCount: { $size: { $ifNull: [{ $arrayElemAt: ["$likes.likedBy", 0] }, []] } },
                 owner: { $first: "$owner" },
                 isLiked: {
                     $cond: {
@@ -303,25 +303,67 @@ const getAllVideos = asyncHandler(async (req, res) => {
     }
 
     let searchResults = null;
+    let matchedUsers = [];
 
     if (query) {
-        const searchPipeline = [
+        const regex = new RegExp(query, "i");
+        
+        // Find matching users (channels) to support channel search
+        matchedUsers = await User.aggregate([
             {
-                $search: {
-                    index: "search-index",
-                    text: {
-                        query: query,
-                        path: ["title", "description"]
+                $match: {
+                    $or: [
+                        { username: { $regex: regex } },
+                        { fullName: { $regex: regex } }
+                    ]
+                }
+            },
+            {
+                $lookup: {
+                    from: "subscriptions",
+                    localField: "_id",
+                    foreignField: "channel",
+                    as: "subscribers"
+                }
+            },
+            {
+                $addFields: {
+                    subscribersCount: { $size: "$subscribers" },
+                    isSubscribed: {
+                        $cond: {
+                            if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+                            then: true,
+                            else: false
+                        }
                     }
                 }
             },
-            { $match: { isPublished: true } },
-            { $project: { _id: 1 } },
-        ];
+            {
+                $project: {
+                    _id: 1,
+                    fullName: 1,
+                    username: 1,
+                    avatar: 1,
+                    coverImage: 1,
+                    subscribersCount: 1,
+                    isSubscribed: 1
+                }
+            }
+        ]);
+        
+        const userIds = matchedUsers.map(u => u._id);
 
-        searchResults = await Video.aggregate(searchPipeline);
+        // Find videos matching the query text or owned by matched users
+        const matchedDocs = await Video.find({
+            isPublished: true,
+            $or: [
+                { title: { $regex: regex } },
+                { description: { $regex: regex } },
+                { owner: { $in: userIds } }
+            ]
+        }).select("_id");
 
-        // console.log("Search results for query:", query, searchResults);
+        searchResults = matchedDocs;
     }
 
     const pipeline = [];
@@ -339,7 +381,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
             }
         );
     }
-    // Filter by `$search` results if applicable
+    // Filter by search results if applicable
     if (searchResults) {
         const searchIds = searchResults.map((result) => result._id);
         // console.log("Search IDs count:", searchIds.length);
@@ -371,6 +413,28 @@ const getAllVideos = asyncHandler(async (req, res) => {
         $match: {
             isPublished: true,
         },
+    });
+
+    //Cursor based pagination (only apply when NOT searching)
+    // Step A: check if cursor is provided and add a match stage to the pipeline
+    if (cursor && !searchResults) {
+        if (!isValidObjectId(cursor)) {
+            throw new ApiError(400, "Invalid cursor");
+        }
+        pipeline.push({
+            $match: {
+                _id: { $lt: new mongoose.Types.ObjectId(cursor) }
+            }
+        })
+    }
+    // Step B: Add a sort stage to the pipeline
+    const sortStage = category === 'trending' ? { views: -1, _id: -1 } : { createdAt: -1, _id: -1 };
+    pipeline.push({
+        $sort: sortStage
+    });
+    // Step C: Add a limit stage to the pipeline (fetch one extra record to check if there's a next page)
+    pipeline.push({
+        $limit: limitNum + 1
     });
 
     // Join with the users collection
@@ -414,28 +478,6 @@ const getAllVideos = asyncHandler(async (req, res) => {
     }
     );
 
-    //Cursor based pagination (only apply when NOT searching)
-    // Step A: check if cursor is provided and add a match stage to the pipeline
-    if (cursor && !searchResults) {
-        if (!isValidObjectId(cursor)) {
-            throw new ApiError(400, "Invalid cursor");
-        }
-        pipeline.push({
-            $match: {
-                _id: { $lt: new mongoose.Types.ObjectId(cursor) }
-            }
-        })
-    }
-    // Step B: Add a sort stage to the pipeline
-    const sortStage = category === 'trending' ? { views: -1, _id: -1 } : { createdAt: -1, _id: -1 };
-    pipeline.push({
-        $sort: sortStage
-    });
-    // Step C: Add a limit stage to the pipeline (fetch one extra record to check if there's a next page)
-    pipeline.push({
-        $limit: limitNum + 1
-    });
-
     // Step 3: Use `aggregatePaginate` for pagination
     const videos = await Video.aggregate(pipeline);
 
@@ -462,7 +504,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
     // Step 4 : Respond with paginated videos
     return res.status(200).json(
-        new ApiResponse(200, { videos, hasMore, nextCursor }, "Videos fetched successfully")
+        new ApiResponse(200, { videos, channels: matchedUsers || [], hasMore, nextCursor }, "Videos fetched successfully")
     );
 })
 

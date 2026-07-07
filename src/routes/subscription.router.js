@@ -1,8 +1,13 @@
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { Router } from "express";
-import { subscribeChannel, unsubscribeChannel } from "../controllers/subscription.controller.js";
+import { subscribeChannel, unsubscribeChannel, getSubscribedVideos } from "../controllers/subscription.controller.js";
 
 const subscriptionRouter = Router();
+
+subscriptionRouter.route('/videos').get(
+    verifyJWT,
+    getSubscribedVideos
+);
 
 subscriptionRouter.route('/subscribe/:channelId').post(
     verifyJWT,
@@ -13,6 +18,5 @@ subscriptionRouter.route('/unsubscribe/:channelId').post(
     verifyJWT,
     unsubscribeChannel
 );
-
 
 export default subscriptionRouter;

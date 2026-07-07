@@ -3,6 +3,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import { User } from "../models/user.model.js";
 import { Subscription } from "../models/subscription.model.js";
+import { Video } from "../models/video.model.js";
 
 const subscribeChannel = asyncHandler(async (req, res) => {
     
@@ -65,6 +66,32 @@ const unsubscribeChannel = asyncHandler(async(req,res)=>{
     return res.status(200).json(new ApiResponse(200, subscription, "Unsubscribed successfully"));
 })
 
+const getSubscribedVideos = asyncHandler(async (req, res) => {
+    const subscriberId = req.user?._id;
+
+    // Find all channels the user is subscribed to
+    const subscriptions = await Subscription.find({ subscriber: subscriberId });
+    const channelIds = subscriptions.map((sub) => sub.channel);
+
+    if (channelIds.length === 0) {
+        return res.status(200).json(
+            new ApiResponse(200, [], "User has no subscriptions")
+        );
+    }
+
+    // Find all published videos of these channels
+    const videos = await Video.find({
+        owner: { $in: channelIds },
+        isPublished: true
+    })
+    .populate("owner", "fullName username avatar")
+    .sort({ createdAt: -1 });
+
+    return res.status(200).json(
+        new ApiResponse(200, videos, "Subscription videos fetched successfully")
+    );
+});
+
 export {
-    subscribeChannel, unsubscribeChannel
+    subscribeChannel, unsubscribeChannel, getSubscribedVideos
 };

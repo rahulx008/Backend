@@ -36,6 +36,9 @@ app.use("/api/v1/comments", commentRouter);
 import likeRouter from './routes/like.router.js'
 app.use("/api/v1/likes", likeRouter);
 
+import playlistRouter from './routes/playlist.router.js'
+app.use("/api/v1/playlist", playlistRouter);
+
 app.use("/api/v1/server", ( req, res ) => {
     res.send("Server is Up")
     return;
