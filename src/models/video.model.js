@@ -1,55 +1,55 @@
-import mongoose, {Schema} from "mongoose";
+import mongoose, { Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 import { categories } from "../constants.js";
 
 const videoSchema = new Schema({
-    title:{
+    title: {
         type: String,
-        required:true
+        required: true
     },
-    description:{
+    description: {
         type: String,
-        required:true
+        required: true
     },
-    owner:{
+    owner: {
         type: Schema.Types.ObjectId,
-        ref:"User"
+        ref: "User"
     },
-    views:{
+    views: {
         type: Number,
-        default:0
+        default: 0
     },
-    category:{
+    category: {
         type: String,
         enum: categories
     },
-    isPublished:{
+    isPublished: {
         type: Boolean,
         default: true
     },
-    videoFile:{
+    videoFile: {
         type: String, //cloudinary url
-        required:true
+        required: true
     },
-    thumbnail:{
+    thumbnail: {
         type: String, //cloudinary url
-        required:true
+        required: true
     },
-    video_publicId:{
+    video_publicId: {
         type: String, //cloudinary public id
-        required:true
+        required: true
     },
-    thumbnail_publicId:{
+    thumbnail_publicId: {
         type: String, //cloudinary public id
-        required:true
+        required: true
     }
 
-},{timestamps: true}
-    
+}, { timestamps: true }
+
 )
 
 videoSchema.plugin(mongooseAggregatePaginate);
-videoSchema.index({ title: "text", description: "text", views:1, _id: 1, createdAt: 1 });
+videoSchema.index({ title: "text", description: "text", views: 1, _id: 1, createdAt: 1 });
 videoSchema.index({ isPublished: 1, category: 1, views: -1, _id: -1 });
 videoSchema.index({ isPublished: 1, category: 1, createdAt: -1, _id: -1 });
 videoSchema.index({ isPublished: 1, owner: 1, createdAt: -1 });

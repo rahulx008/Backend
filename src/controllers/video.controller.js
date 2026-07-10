@@ -307,7 +307,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
     if (query) {
         const regex = new RegExp(query, "i");
-        
+
         // Find matching users (channels) to support channel search
         matchedUsers = await User.aggregate([
             {
@@ -350,7 +350,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 }
             }
         ]);
-        
+
         const userIds = matchedUsers.map(u => u._id);
 
         // Find videos matching the query text or owned by matched users
