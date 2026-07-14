@@ -38,6 +38,7 @@ router.route("/delete/:videoId").delete(
 );
 
 router.route("/getAllVideos").get(
+    verifyJWT, 
     getAllVideos
 );
 
